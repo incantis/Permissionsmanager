@@ -1,0 +1,251 @@
+#Stand 07.08.2021
+#Version 1.0.0
+#slm und wlj
+function set-permission
+{
+Param(
+        [Parameter(Mandatory=$true)][String]$fullpath,
+        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][ValidateSet($false,$true)][bool]$permission_modify = $true, #$true/$false
+        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][ValidateSet($false,$true)][bool]$permission_read = $false, #$true/$false
+        [Parameter(Mandatory=$false)][String]$ou ='OU=DEMO,OU=Groups,OU=incantis GmbH,DC=ads,DC=incantis,DC=de',
+        [Parameter(Mandatory=$false)][String]$prefix = 'FS',
+        [Parameter(Mandatory=$false)][ValidateNotNullOrEmpty()][ValidateSet($false,$true)][bool]$ServerName = $false, #$true/$false
+        [Parameter(Mandatory=$false)][ValidateNotNullOrEmpty()][ValidateSet($false,$true)][bool]$ShareName = $true, #$true/$false
+        [Parameter(Mandatory=$false)][String]$suffix_read = 're',
+        [Parameter(Mandatory=$false)][String]$suffix_modify = 'md',
+        [Parameter(Mandatory=$false)][String]$suffix_list = 'ls',
+        [Parameter(Mandatory=$false)][String]$delimiter = '_',
+        [Parameter(Mandatory=$false)][ValidateNotNullOrEmpty()][ValidateSet("Global","Universal","DomainLocal")][String]$GroupScope = 'Global' 
+        )
+
+
+
+# Active Directory Modul importieren
+
+Import-Module ActiveDirectory
+
+#Pfad auf Kleinschreibung anpassen
+
+$fullpath = $fullpath.ToLower()
+
+#Pfad auf letztes Zeichen prüfen und bei einem \ entfernen
+
+if($fullpath) 
+{
+if ( ($fullpath.EndsWith("\")) )
+    {
+        $fullpath = $fullpath.Substring(0,($($fullpath).Length-1))
+    }
+} 
+
+#Pfad testen und wenn er nicht existiert erstellen
+
+if (!(Test-Path -Path $fullpath))
+{
+write-host "$fullpath existiert nicht, erstelle Ordner"
+New-Item -Path $fullpath -ItemType Directory -Force -InformationAction SilentlyContinue
+}
+
+#Pfad umwandeln für die Gruppenerzeugung
+
+$smbpath = [string]::Join('\', $fullpath.Split('\')[$($fullpath.Split('\').Length1..3)])
+$smbpath = $smbpath + "\"
+$ServerNamePath = [string]::join("\",$fullpath.Split("\")[2])
+$ShareNamePath = [string]::join("\",$fullpath.Split("\")[3])
+
+Write-Host $smbpath
+
+
+$undersmbpath = $smbpath -replace '\\',$delimiter
+
+Write-Host $undersmbpath
+
+
+$folderpath = $fullpath.Replace($smbpath,"")
+
+Write-Host $folderpath 
+
+
+$Groupnamepath = $folderpath -replace '\\',$delimiter
+
+Write-Host $Groupnamepath
+
+#Gruppenbenamung anhand von Switch Parametern
+
+#Servername in Gruppennamen
+
+if ($ServerName -eq $true)
+{
+    $Prefix = "$Prefix$delimiter$ServerNamePath"
+}
+
+Write-Host $prefix
+
+#Freigabennamen in Gruppennamen
+
+if ($ShareName -eq $true)
+{
+    $Prefix = "$Prefix$delimiter$ShareNamePath"
+}
+
+Write-Host $prefix
+
+$prefixgroupnamepath = "$prefix$delimiter$Groupnamepath$delimiter"
+
+Write-Host $prefixgroupnamepath
+
+Write-Output $ou
+
+#Gruppe für Modify erzeugen
+
+if ($permission_modify -eq $true)
+{
+    $Groupmodify = "$prefixgroupnamepath$suffix_modify"
+
+        if (!(Get-ADGroup -filter {Name -eq $Groupmodify} -ErrorAction SilentlyContinue))
+        { 
+            New-ADGroup $Groupmodify -Path "$ou" -GroupCategory Security -GroupScope $GroupScope -description $fullpath -PassThru
+        }
+        else 
+        {
+            Write-Host "Gruppe $Groupmodify existiert bereits"
+        }
+
+        $Permission = [system.Security.AccessControl.FileSystemRights]"DeleteSubdirectoriesAndFiles, Write, ReadAndExecute, Synchronize"
+        $ACL = Get-Acl $fullpath
+        if (!($ACL.Access.IdentityReference.Value -eq $Groupmodify))  
+            {
+                $ACLmodify = New-Object system.security.accesscontrol.filesystemaccessrule($Groupmodify, $Permission, 'ContainerInherit,ObjectInherit', "None", "Allow")
+                $ACL.SetAccessRule($ACLmodify) 
+                Set-Acl -Path $fullpath -AclObject $ACL
+            }
+}
+
+Write-Host $Groupmodify
+
+#Gruppe für Read erzeugen
+
+if ($permission_read -eq $true)
+{
+    $Groupread = "$prefixgroupnamepath$suffix_read"
+
+        if (!(Get-ADGroup -filter {Name -eq $Groupread} -ErrorAction SilentlyContinue))
+        { 
+            New-ADGroup $Groupread -Path "$ou" -GroupCategory Security -GroupScope $GroupScope -description $fullpath -PassThru
+        }
+        else 
+        {
+            Write-Host "Gruppe $Groupread existiert bereits"
+        }
+
+        $Permission = [system.Security.AccessControl.FileSystemRights]"ReadAndExecute, Synchronize"
+        $ACL = Get-Acl $fullpath
+        if (!($ACL.Access.IdentityReference.Value -eq $Groupread))  
+            {
+                $ACLread = New-Object system.security.accesscontrol.filesystemaccessrule($Groupread, $Permission, 'ContainerInherit,ObjectInherit', "None", "Allow")
+                $ACL.SetAccessRule($ACLread) 
+                Set-Acl -Path $fullpath -AclObject $ACL
+            }
+}
+
+Write-Host $Groupread
+
+
+#Gruppen für List erzeugen
+
+#Ordner in Array schreiben
+
+$folderarray = $folderpath.Split("\")
+
+#Anzahl Arrayelemente -1, da für letzten Ordner kein List Recht benötigt
+
+$folderarray_count = $folderarray.Count - 1
+
+#Variablen setzen
+
+$delimiter_path = "\"
+
+$ListGroupName_Base = "$prefix$delimiter"
+$ListFolderName_Base =   $smbpath.Substring(0,($($smbpath).Length-1))
+$ListGroupArray = @()
+
+
+for($i=0; $i -lt $folderarray_count; $i++)
+{
+    $ListGroupName_Base= $ListGroupName_Base + $folderarray[$i] + $delimiter
+    $ListGroupName = $ListGroupName_Base + $suffix_list
+    $ListGroupArray += $ListGroupName
+
+
+    $ListFolderName_Base= $ListFolderName_Base + $delimiter_path + $folderarray[$i]
+
+
+
+    Write-host $ListGroupName
+    Write-Host $ListFolderName_Base
+
+        # List Gruppe erstellen
+
+       if (!(Get-ADGroup -filter {Name -eq $ListGroupName} -ErrorAction SilentlyContinue))
+        { 
+            New-ADGroup $ListGroupName -Path "$ou" -GroupCategory Security -GroupScope $GroupScope -description $ListFolderName_Base -PassThru
+        }
+        else 
+        {
+            Write-Host "Gruppe $ListGroupName existiert bereits"
+        }
+
+        #List Gruppen berechtigen
+
+        $Permission = [system.Security.AccessControl.FileSystemRights]"ReadAndExecute,Synchronize"
+        $ACL = Get-Acl $ListFolderName_Base
+             if (!($ACL.Access.IdentityReference.Value -eq $ListGroupName))  
+            {
+                    $ACLlist = New-Object system.security.accesscontrol.filesystemaccessrule($ListGroupName, $Permission, "None", "None", "Allow")
+                    $ACL.SetAccessRule($ACLlist) 
+                    Set-Acl -Path $ListFolderName_Base -AclObject $ACL
+             }
+
+
+
+
+}
+
+# Gruppen verschachteln
+
+$ListGroupArray_Count = $ListGroupArray.Count
+
+if($ListGroupArray_Count -gt 0)
+{
+
+    if($permission_modify)
+    {
+        Add-ADPrincipalGroupMembership -Identity $Groupmodify -Memberof $ListGroupArray[$ListGroupArray_Count-1]
+    }
+
+    if($permission_read)
+    {
+        Add-ADPrincipalGroupMembership -Identity $Groupread -Memberof $ListGroupArray[$ListGroupArray_Count-1]
+    }
+}
+
+#List Gruppen verschachteln
+
+for($i = $ListGroupArray_Count - 1; $i-gt 0; $i--)
+{
+    Add-ADPrincipalGroupMembership -Identity $ListGroupArray[$i] -Memberof $ListGroupArray[$i-1]
+    Write-host $ListGroupArray[$i] 
+    Write-Host "in"
+    Write-Host $ListGroupArray[$i-1] 
+
+    
+}
+
+
+}
+
+
+
+
+
+

@@ -5,12 +5,12 @@ function set-permission
 {
 Param(
         [Parameter(Mandatory=$true)][String]$fullpath,
-        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][ValidateSet($false,$true)][bool]$permission_modify = $true, #$true/$false
-        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][ValidateSet($false,$true)][bool]$permission_read = $false, #$true/$false
+        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][ValidateSet($false,$true)][String]$permission_modify = $true, #$true/$false
+        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][ValidateSet($false,$true)][String]$permission_read = $false, #$true/$false
         [Parameter(Mandatory=$false)][String]$ou ='OU=DEMO,OU=Groups,OU=incantis GmbH,DC=ads,DC=incantis,DC=de',
         [Parameter(Mandatory=$false)][String]$prefix = 'FS',
-        [Parameter(Mandatory=$false)][ValidateNotNullOrEmpty()][ValidateSet($false,$true)][bool]$ServerName = $false, #$true/$false
-        [Parameter(Mandatory=$false)][ValidateNotNullOrEmpty()][ValidateSet($false,$true)][bool]$ShareName = $true, #$true/$false
+        [Parameter(Mandatory=$false)][ValidateNotNullOrEmpty()][ValidateSet($false,$true)][String]$ServerName = $false, #$true/$false
+        [Parameter(Mandatory=$false)][ValidateNotNullOrEmpty()][ValidateSet($false,$true)][String]$ShareName = $true, #$true/$false
         [Parameter(Mandatory=$false)][String]$suffix_read = 're',
         [Parameter(Mandatory=$false)][String]$suffix_modify = 'md',
         [Parameter(Mandatory=$false)][String]$suffix_list = 'ls',
@@ -26,7 +26,7 @@ Import-Module ActiveDirectory
 
 #Pfad auf Kleinschreibung anpassen
 
-$fullpath = $fullpath.ToLower()
+#$fullpath = $fullpath.ToLower()
 
 #Pfad auf letztes Zeichen prüfen und bei einem \ entfernen
 
